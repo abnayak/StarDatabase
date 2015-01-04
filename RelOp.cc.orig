@@ -1,0 +1,1092 @@
+#include "RelOp.h"
+
+/* SelectFile class definition starts here */
+
+void * sf_workerThread(void* attr) {
+#ifdef ddebug    
+    cout << "Selection file thread created" << endl;
+#endif
+    SelectFile *sf_ptr = (SelectFile*) attr;
+    sf_ptr->sf_runOperator();
+#ifdef ddebug    
+    cout << "Selection file thread exited" << endl;
+#endif
+    pthread_exit(NULL);
+}
+
+void SelectFile::sf_runOperator() {
+    dbfile->MoveFirst();
+    //while (dbfile->GetNext(record, *selOp, *literal)) {
+    //  outputPipe->Insert(&record);
+    //}
+    while (dbfile->GetNext(record)) {
+        if (selOp != NULL) {
+            ce.Compare(&record, literal, selOp);
+        } else {
+            outputPipe->Insert(&record);
+        }
+    }
+    outputPipe->ShutDown();
+}
+
+void SelectFile::Run(DBFile &inFile, Pipe &outPipe, CNF &selOp, Record &literal) {
+    //Initialize the local variables
+    this->dbfile = &inFile;
+    this->outputPipe = &outPipe;
+    this->selOp = &selOp;
+    this->literal = &literal;
+
+    if (pthread_create(&worker, NULL, sf_workerThread, (void*) this)) {
+        SYS_FATAL("Failed to start the thread");
+    }
+}
+
+void SelectFile::WaitUntilDone() {
+    //cout << "\nwaiting for thread to end\n" << endl;
+    //pthread_join(worker, NULL);
+    //cout << "\nthread exited " << endl;
+}
+
+void SelectFile::Use_n_Pages(int runlen) {
+    this->runLen = runlen;
+}
+
+/* SelectFile class definition ends here */
+
+/* SelectPipe class definition starts here */
+
+void * sp_workerThread(void* attr) {
+#ifdef ddebug    
+    cout << "selection pipe thread created" << endl;
+#endif    
+    SelectPipe *sp_ptr = (SelectPipe*) attr;
+    sp_ptr->sp_runOperator();
+#ifdef ddebug
+    cout << "Selection pipe thread exited" << endl;
+#endif
+    pthread_exit(NULL);
+}
+
+void SelectPipe::sp_runOperator() {
+    while (inputPipe->Remove(&record)) {
+        if (ce.Compare(&record, literal, selOp) == 1) {
+            outputPipe->Insert(&record);
+        }
+    }
+    outputPipe->ShutDown();
+}
+
+void SelectPipe::Run(Pipe &inPipe, Pipe &outPipe, CNF &selOp, Record &literal) {
+    //Initialize the local variables
+    this->inputPipe = &inPipe;
+    this->outputPipe = &outPipe;
+    this->selOp = &selOp;
+    this->literal = &literal;
+
+    if (pthread_create(&worker, NULL, sf_workerThread, (void*) this)) {
+        SYS_FATAL("Failed to start the thread");
+    }
+}
+
+void SelectPipe::WaitUntilDone() {
+    //cout << "waiting for thread to end" << endl;
+    //pthread_join(worker, NULL);
+    //cout << "thread exited " << endl;
+}
+
+void SelectPipe::Use_n_Pages(int runlen) {
+    this->runLen = runlen;
+}
+
+/*
+ * SelectPipe class definition ends here
+ */
+
+/* Project class definition starts here */
+
+void * p_workerThread(void* attr) {
+#ifdef ddebug
+    cout << "project thread created" << endl;
+#endif
+    Project *p_prt = (Project*) attr;
+    p_prt->p_runOperator();
+#ifdef ddebug
+    cout << "project thread ended" << endl;
+#endif
+    pthread_exit(NULL);
+}
+
+void Project::p_runOperator() {
+
+    while (inputPipe->Remove(&record)) {
+        record.Project(keepMe, numAttsOutput, numAttsInput);
+        outputPipe->Insert(&record);
+    }
+    outputPipe->ShutDown();
+}
+
+void Project::Run(Pipe &inPipe, Pipe &outPipe, int *keepMe, int numAttsInput, int numAttsOutput) {
+    //Initialize the local variables
+    this->inputPipe = &inPipe;
+    this->outputPipe = &outPipe;
+    this->keepMe = keepMe;
+    this->numAttsInput = numAttsInput;
+    this->numAttsOutput = numAttsOutput;
+
+    if (pthread_create(&worker, NULL, p_workerThread, (void*) this)) {
+        SYS_FATAL("Failed to start the thread");
+    }
+}
+
+void Project::WaitUntilDone() {
+    pthread_join(worker, NULL);
+}
+
+void Project::Use_n_Pages(int runlen) {
+    this->runLen = runlen;
+}
+
+/* Project class definition ends here */
+
+/* DuplicateRemoval class definition starts here */
+
+DuplicateRemoval::DuplicateRemoval() {
+    //Use this default value if we do not explicitely set runLen value
+    runLen = 5;
+}
+
+DuplicateRemoval::~DuplicateRemoval() {
+
+}
+
+void * dr_workerThread(void* attr) {
+    DuplicateRemoval *dr_ptr = (DuplicateRemoval*) attr;
+    dr_ptr->dr_runOperator();
+    pthread_exit(NULL);
+}
+
+void DuplicateRemoval::dr_runOperator() {
+
+    //Create the ordermaker from schema which will be use to compare records
+    OrderMaker sortOrder(schema);
+
+    //Push all the data from the input pipe to BigQ and read sorted touples.
+    BigQ bigQ(*inputPipe, bigQoutPipe, sortOrder, runLen);
+
+    /* Algorithm:
+     * Since the touples are sorted, touples which are equal will be at the same 
+     * location. This algo works by comparing the current touple to prevous 
+     * touple. if the matches then discard it as its a duplicate otherwise send 
+     * to ouputPipe.
+     */
+
+    Record previousRecord, currentRecord;
+
+    //When we first encounter the top of the pipe, we need to set the previous
+    if (bigQoutPipe.Remove(&currentRecord)) {
+        previousRecord.Copy(&currentRecord);
+        outputPipe->Insert(&currentRecord);
+    }
+
+    //For rest of the elements in the pipe
+    while (bigQoutPipe.Remove(&currentRecord)) {
+        //If previous and current record are not equal then we have new result
+        if (ce.Compare(&previousRecord, &currentRecord, &sortOrder) != 0) {
+            previousRecord.Copy(&currentRecord);
+            outputPipe->Insert(&currentRecord);
+        }
+    }
+    outputPipe->ShutDown();
+}
+
+void DuplicateRemoval::Run(Pipe &inPipe, Pipe &outPipe, Schema &mySchema) {
+    //Initialize the local variables
+    this->inputPipe = &inPipe;
+    this->outputPipe = &outPipe;
+    this->schema = &mySchema;
+
+    //Create the thread and start processing for the operator
+    if (pthread_create(&worker, NULL, dr_workerThread, (void*) this)) {
+        SYS_FATAL("Failed to start the thread");
+    }
+}
+
+void DuplicateRemoval::WaitUntilDone() {
+    pthread_join(worker, NULL);
+}
+
+void DuplicateRemoval::Use_n_Pages(int runlen) {
+    this->runLen = runlen;
+}
+
+/* DuplicateRemoval class definition ends here */
+
+/* WriteOut class definition starts here */
+
+WriteOut::WriteOut() {
+    //Use this default value if we do not explicitely set runLen value
+    runLen = 5;
+}
+
+WriteOut::~WriteOut() {
+}
+
+void* wo_workerThread(void* attr) {
+    WriteOut *wo_ptr = (WriteOut*) attr;
+    wo_ptr->wo_runOperator();
+    pthread_exit(NULL);
+}
+
+void WriteOut::wo_runOperator() {
+    Record temp;
+    while (inputPipe->Remove(&temp)) {
+        if (temp.WriteToFile(file, schema) == EOF) {
+            SYS_FATAL("Failed to write the record to file");
+        }
+    }
+}
+
+void WriteOut::Run(Pipe &inPipe, FILE *outFile, Schema &mySchema) {
+    //Initialize the local variables
+    this->inputPipe = &inPipe;
+    this->file = outFile;
+    this->schema = &mySchema;
+
+    //Create the thread and start processing for the operator
+    if (pthread_create(&worker, NULL, wo_workerThread, (void*) this)) {
+        SYS_FATAL("Failed to start the thread");
+    }
+}
+
+void WriteOut::WaitUntilDone() {
+    pthread_join(worker, NULL);
+}
+
+void WriteOut::Use_n_Pages(int runlen) {
+    this->runLen = runlen;
+}
+
+/* WriteOut class definition ends here */
+
+/* Sum class definition starts here */
+
+Sum::Sum() {
+    //Use this default value if we do not explicitely set runLen value
+    runLen = 5;
+}
+
+Sum::~Sum() {
+}
+
+void* sum_workerThread(void* attr) {
+    Sum *s_ptr = (Sum*) attr;
+    s_ptr->sum_runOperator();
+    pthread_exit(NULL);
+}
+
+void Sum::sum_runOperator() {
+
+    stringstream ss;
+    Record temp, result;
+    int iResult = 0, iTemp;
+    double dResult = 0, dTemp;
+    bool intType = false, doubleType = false;
+
+    Attribute IA[] = {
+        {"int", Int}
+    };
+    Attribute DA[] = {
+        {"double", Double}
+    };
+
+    while (inputPipe->Remove(&temp)) {
+
+        switch (function->Apply(temp, iTemp, dTemp)) {
+            case Int:
+                iResult += iTemp;
+                intType = true;
+                break;
+            case Double:
+                dResult += dTemp;
+                doubleType = true;
+                break;
+        }
+
+    }
+
+    //Create a memory schema according to the type of result
+    if (intType == true) {
+        Schema ischema("resultSchema", 1, IA);
+        //Need to add | which serve as delimeter of the column 
+        ss << iResult << "|";
+        result.ComposeRecord(&ischema, (ss.str()).c_str());
+        result.Print(&ischema);
+    } else if (doubleType == true) {
+        Schema dschema("resultSchema", 1, DA);
+        ss << dResult << "|";
+        result.ComposeRecord(&dschema, (ss.str()).c_str());
+    }
+
+    outputPipe->Insert(&result);
+    outputPipe->ShutDown();
+}
+
+void Sum::Run(Pipe &inPipe, Pipe &outPipe, Function &computeMe) {
+    //Initialize the local variables
+    this->inputPipe = &inPipe;
+    this->outputPipe = &outPipe;
+    this->function = &computeMe;
+
+    //Create the thread and start processing touple
+    if (pthread_create(&worker, NULL, sum_workerThread, (void*) this)) {
+        SYS_FATAL("Failed to start the thread");
+    }
+    //sum_runOperator();
+}
+
+void Sum::WaitUntilDone() {
+    //pthread_join(worker, NULL);
+}
+
+void Sum::Use_n_Pages(int runlen) {
+    this->runLen = runlen;
+}
+
+/* Sum class definition ends here */
+
+/* Join class definition starts here */
+
+Join::Join() {
+    //Use this default value if we do not explicitely set runLen value
+    runLen = 5;
+}
+
+Join::~Join() {
+}
+
+void* Join_workerThread(void* attr) {
+#ifdef ddebug        
+    cout << "Join thread created" << endl;
+#endif
+    Join *j_ptr = (Join*) attr;
+    j_ptr->Join_runOperator();
+#ifdef ddebug    
+    cout << "Join thread exited" << endl;
+#endif
+    pthread_exit(NULL);
+}
+
+void Join::Join_runOperator() {
+
+    Record *buffer = new Record;
+    ComparisonEngine ce;
+
+    //Pipe Buffer size
+    int buffsz = 100;
+
+    Pipe *outPipeLeft = new Pipe(buffsz);
+    Pipe *outPipeRight = new Pipe(buffsz);
+
+    OrderMaker orderMakerLeft;
+    OrderMaker orderMakerRight;
+
+    Record * leftRecord = new Record;
+    Record * rightRecord = new Record;
+
+    vector<Record*> leftblock;
+    vector<Record*> rightblock;
+
+    Record *resultRecord = new Record;
+    int le = 0, ri = 0, bo = 0;
+    int numOfAttsL;
+    int numOfAttsR;
+
+    if (selOp->GetSortOrders(orderMakerLeft, orderMakerRight)) {
+
+        //Create the BigQ queues to hold the left and right touples
+        BigQ bqL(*inPipeL, *outPipeLeft, orderMakerLeft, runLen);
+        //Added the sleep as threads trying to read before any data present in pipe
+        sleep(1);
+
+        BigQ bqR(*inPipeR, *outPipeRight, orderMakerRight, runLen);
+        sleep(1);
+
+        int li = outPipeLeft->Remove(leftRecord);
+        int ri = outPipeRight->Remove(rightRecord);
+
+        cout << "****************" << endl;
+        cout << "li  " << li << "ri  " << ri << endl;
+        cout << "****************" << endl;
+        cout.flush();
+
+        bool leftEnd = false;
+        bool rightEnd = false;
+
+        if (li != 0 && ri != 0) {
+
+            numOfAttsL = ((int *) leftRecord->bits)[1] / sizeof (int) - 1;
+            numOfAttsR = ((int *) rightRecord->bits)[1] / sizeof (int) - 1;
+
+            int attsToKeep[numOfAttsL + numOfAttsR];
+
+            for (int i = 0; i < numOfAttsL; i++) {
+                attsToKeep[i] = i;
+            }
+            for (int i = 0; i < numOfAttsR; i++) {
+                attsToKeep[numOfAttsL + i] = i;
+            }
+
+            while (true) {
+
+
+                if (ce.Compare(leftRecord, &orderMakerLeft, rightRecord, &orderMakerRight) < 0) {
+                    le++;
+
+                    if (!outPipeLeft->Remove(leftRecord))
+                        break;
+
+                } else if (ce.Compare(leftRecord, &orderMakerLeft, rightRecord, &orderMakerRight) > 0) {
+                    ri++;
+
+                    if (!outPipeRight->Remove(rightRecord))
+                        break;
+
+                } else {
+
+                    leftEnd = false;
+                    rightEnd = false;
+
+                    do {
+                        le++;
+                        Record *prev = new Record();
+                        prev->Consume(leftRecord);
+                        leftblock.push_back(prev);
+                        if (!(outPipeLeft->Remove(leftRecord))) {
+                            leftEnd = true;
+                            break;
+                        }
+                        if (ce.Compare(prev, leftRecord, &orderMakerLeft) != 0) {
+                            break;
+                        }
+                    } while (true);
+
+                    do {
+                        ri++;
+                        Record *prev = new Record();
+                        prev->Consume(rightRecord);
+                        rightblock.push_back(prev);
+
+                        if (!(outPipeRight->Remove(rightRecord))) {
+                            rightEnd = true;
+                            break;
+                        }
+
+                        if (ce.Compare(prev, rightRecord, &orderMakerRight) != 0) {
+                            break;
+                        }
+
+                    } while (true);
+
+                    for (int i = 0; i < leftblock.size(); i++) {
+                        for (int j = 0; j < rightblock.size(); j++) {
+
+                            resultRecord->MergeRecords(leftblock.at(i), rightblock.at(j), numOfAttsL, numOfAttsR, attsToKeep, numOfAttsL + numOfAttsR, numOfAttsL);
+                            outPipe->Insert(resultRecord);
+                        }
+                        delete leftblock.at(i);
+                    }
+
+                    for (int j = 0; j < rightblock.size(); j++) {
+                        delete rightblock.at(j);
+                    }
+
+
+                    leftblock.clear();
+                    rightblock.clear();
+                    if (rightEnd || leftEnd)
+                        break;
+                }
+            } // end if while (true)
+            while (outPipeLeft->Remove(leftRecord)) {
+                le++;
+            }
+
+            while (outPipeRight->Remove(leftRecord)) {
+                ri++;
+            }
+        }
+
+    } else {
+
+        //Algorithm to do Block nested join
+
+        while (inPipeR->Remove(rightRecord)) {
+            Record *temp = new Record;
+            temp->Consume(rightRecord);
+            rightblock.push_back(temp);
+        }
+
+        inPipeL->Remove(leftRecord);
+
+        numOfAttsL = ((int *) leftRecord->bits)[1] / sizeof (int) - 1;
+        numOfAttsR = ((int *) rightblock.at(0)->bits)[1] / sizeof (int) - 1;
+
+        int attsToKeep[numOfAttsL + numOfAttsR];
+
+        for (int i = 0; i < numOfAttsL; i++) {
+            attsToKeep[i] = i;
+        }
+        for (int i = 0; i < numOfAttsR; i++) {
+            attsToKeep[numOfAttsL + i] = i;
+        }
+
+        int count = 1;
+
+        do {
+            for (int j = 0; j < rightblock.size(); j++) {
+                resultRecord->MergeRecords(leftRecord, rightblock.at(j), numOfAttsL, numOfAttsR, attsToKeep, numOfAttsL + numOfAttsR, numOfAttsL);
+
+                outPipe->Insert(resultRecord);
+            }
+            cerr << count++ << endl;
+        } while (inPipeL->Remove(leftRecord));
+
+    }
+
+    outPipe->ShutDown();
+
+    delete leftRecord;
+    delete rightRecord;
+    delete resultRecord;
+    delete outPipeLeft;
+    delete outPipeRight;
+    //delete resultRecord;
+
+}
+
+void Join::Run(Pipe &inPipeL, Pipe &inPipeR, Pipe &outPipe, CNF &selOp, Record &literal) {
+    //Initialize the local variables
+    this->inPipeL = &inPipeL;
+    this->inPipeR = &inPipeR;
+    this->outPipe = &outPipe;
+    this->selOp = &selOp;
+    this->literal = &literal;
+
+    //Create the thread and start processing touples
+    if (pthread_create(&worker, NULL, Join_workerThread, (void*) this)) {
+        SYS_FATAL("Failed to start the thread");
+    }
+
+}
+
+void Join::WaitUntilDone() {
+    //pthread_join(worker, NULL);
+}
+
+void Join::Use_n_Pages(int runlen) {
+    this->runLen = runlen;
+}
+
+/* Join class definition ends here */
+
+
+
+/* GroupBy class definition starts here*/
+
+/*-------------------------------------------------------------
+
+void Join::Run(Pipe &inPipeL, Pipe &inPipeR, Pipe &outPipe, CNF &selOp, Record &literal, bool leftflag, bool rightflag) {
+    MIN_RUNLEN=5;
+    runlen = MIN_RUNLEN; // just in case if the test case forgets to set runlen;
+    this->inPipeL = &inPipeL;
+    this->inPipeR = &inPipeR;
+    this->outPipe = &outPipe;
+    this->selOp = &selOp;
+    this->literal = &literal;
+    pthread_create(&op_thread, NULL, doOpHelper, (void*) this);
+    BypassSrtLeft = leftflag;
+    BypassSrtright = rightflag;
+}
+
+void* Join::doOpHelper(void* context) {
+    ((Join *) context)->doOperation();
+}
+
+void* Join::LeftBypasserhelper(void *context) {
+    ((Join *) context)->LeftBypasser();
+}
+
+void* Join::LeftBypasser() {
+    Record temp;
+    while (inPipeL->Remove(&temp)) {
+        lsrtdoutpipe->Insert(&temp);
+    }
+    lsrtdoutpipe->ShutDown();
+}
+
+void* Join::RightBypasserhelper(void *context) {
+    ((Join *) context)->RightBypasser();
+}
+
+void* Join::RightBypasser() {
+    Record temp;
+    while (inPipeR->Remove(&temp)) {
+
+        rsrtdoutpipe->Insert(&temp);
+    }
+    rsrtdoutpipe->ShutDown();
+}
+
+void* Join::doOperation() {
+
+#ifdef _Join_test
+    int cnt = 0, lpipcnt = 0, rpipcnt = 0, reszero = 0, respos = 0, resneg = 0;
+#endif
+    OrderMaker oleft, oright;
+    selOp->GetCNFSortOrders(oleft, oright);
+    lsrtdoutpipe = new Pipe(1000);
+    rsrtdoutpipe = new Pipe(1000);
+    if (oleft.numAtts == oright.numAtts && oleft.numAtts > 0) {
+        int lpipnotempty, rpipnotempty;
+        //Pipe lsrtdoutpipe(1000);
+        //Pipe rsrtdoutpipe(1000);
+        int cnt = 0;
+        bool quitflag = false;
+        BigQ *ltable;
+        if (!BypassSrtLeft) {
+            ltable = new BigQ(*inPipeL, *lsrtdoutpipe, oleft, runlen);
+        } else {
+            pthread_create(&lbp_thread, NULL, LeftBypasserhelper, (void*) this);
+        }
+
+
+        vector<Record*> lvec;
+        vector<Record*> rvec;
+
+        Record lprev, rprev, lcurr, rcurr;
+        Record *templrecord, *temprrecord;
+
+        bool lvecfilled, rvecfilled;
+        ComparisonEngine compengine;
+
+        lpipnotempty = lsrtdoutpipe->Remove(&lprev);
+
+        templrecord = new Record();
+        templrecord->Copy(&lprev);
+        lvec.push_back(templrecord);
+
+        BigQ *rtable;
+
+        if (!BypassSrtright) {
+            rtable = new BigQ(*inPipeR, *rsrtdoutpipe, oright, runlen);
+        } else {
+            pthread_create(&rbp_thread, NULL, RightBypasserhelper, (void*) this);
+        }
+        rpipnotempty = rsrtdoutpipe->Remove(&rprev);
+        temprrecord = new Record();
+        temprrecord->Copy(&rprev);
+        rvec.push_back(temprrecord);
+
+        lpipnotempty = lsrtdoutpipe->Remove(&lcurr);
+        rpipnotempty = rsrtdoutpipe->Remove(&rcurr);
+        lvecfilled = rvecfilled = false;
+
+        // for merging 2 records, necessary stuff
+        int nolatts = ((int *) lprev.bits)[1] / sizeof (int) - 1;
+        int noratts = ((int *) rprev.bits)[1] / sizeof (int) - 1;
+        int noofatts = nolatts + noratts;
+        int *attstokeep = new int[noofatts];
+        int j = 0;
+        for (int i = 0; i < nolatts; i++)
+            attstokeep[j++] = i;
+        for (int k = 0; k < noratts; k++)
+            attstokeep[j++] = k;
+        //////merge stuff initialized////////
+        // start of the main loop...////
+        while (((rpipnotempty == 1) || (lpipnotempty == 1))&&!quitflag) {
+            while ((lpipnotempty == 1)&&(compengine.Compare(&lprev, &lcurr, &oleft) == 0) && !lvecfilled) {
+                templrecord = new Record();
+                templrecord->Copy(&lcurr);
+                lvec.push_back(templrecord);
+                lpipnotempty = lsrtdoutpipe->Remove(&lcurr);
+            }
+            lvecfilled = true;
+            while ((rpipnotempty == 1)&&(compengine.Compare(&rcurr, &rprev, &oright) == 0) && !rvecfilled) {
+                temprrecord = new Record();
+                temprrecord->Copy(&rcurr);
+                rvec.push_back(temprrecord);
+                rpipnotempty = rsrtdoutpipe->Remove(&rcurr);
+            }
+            rvecfilled = true;
+            Record joinrecord;
+            ComparisonEngine ce;
+            int result = compengine.Compare(&lprev, &oleft, &rprev, &oright);
+
+            if (result == 0) {
+                for (int i = 0; i < lvec.size(); i++) {
+                    for (int j = 0; j < rvec.size(); j++) {
+                        if (ce.Compare(lvec.at(i), rvec.at(j), literal, selOp) == 1) {
+                            Record copyRec;
+                            copyRec.Copy(rvec.at(j));
+                            joinrecord.MergeRecords(lvec.at(i), &copyRec, nolatts, noratts, attstokeep, noofatts, nolatts);
+                            outPipe->Insert(&joinrecord);
+                        }
+
+                    }
+                }
+                deleteandclear(lvec);
+                deleteandclear(rvec);
+                lvecfilled = false;
+                rvecfilled = false;
+
+                if ((rpipnotempty == 1) && (lpipnotempty == 1)) {
+                    lprev.Consume(&lcurr);
+
+                    lpipnotempty = lsrtdoutpipe->Remove(&lcurr);
+
+                    rprev.Consume(&rcurr);
+                    rpipnotempty = rsrtdoutpipe->Remove(&rcurr);
+
+                    templrecord = new Record();
+                    temprrecord = new Record();
+
+                    templrecord->Copy(&lprev);
+                    temprrecord->Copy(&rprev);
+
+                    lvec.push_back(templrecord);
+                    rvec.push_back(temprrecord);
+
+                } else {
+                    quitflag = true;
+                }
+            } else if (result < 0) {
+                lvecfilled = false;
+                deleteandclear(lvec);
+
+                if (lpipnotempty == 1) {
+                    lprev.Consume(&lcurr);
+                    lpipnotempty = lsrtdoutpipe->Remove(&lcurr);
+                    templrecord = new Record();
+                    templrecord->Copy(&lprev);
+                    lvec.push_back(templrecord);
+                } else {
+                    quitflag = true;
+                }
+            } else {
+                rvecfilled = false;
+                deleteandclear(rvec);
+
+                if (rpipnotempty == 1) {
+                    rprev.Consume(&rcurr);
+                    rpipnotempty = rsrtdoutpipe->Remove(&rcurr);
+                    temprrecord = new Record();
+                    temprrecord->Copy(&rprev);
+                    rvec.push_back(temprrecord);
+                } else {
+                    quitflag = true;
+                }
+            }
+        }
+        while (lpipnotempty == 1) {
+            Record rec;
+            lpipnotempty = lsrtdoutpipe->Remove(&rec);
+        }
+        while (rpipnotempty == 1) {
+            Record rec;
+            rpipnotempty = rsrtdoutpipe->Remove(&rec);
+        }
+
+    }
+        
+           //Block Nested Join - (8 min on Q6)
+           //1.Store the entire right part of the relation on to the disk in a heap file.
+           //2.Get runlen no of records = approximating to 600*runlen (600 pages/rec)  [BLOCK]
+           //of the Left Relation from the Pipe.
+           //3.Get pages from disk one by one of right part and join with the records
+           //in Left Relation.Put the results in Outputpipe.
+           //4.Get the next 600*runlen records from the Pipe and repeat step 3 , until there
+           //are no records left.
+           //5.Delete the Temp Heap File of Right Relation.
+         
+
+    else {
+
+        string rawtime = myTime::getusec();
+        char outfile[100];
+        sprintf(outfile, "%s.bin", rawtime.c_str());
+
+        DBFile crtempdB;
+        crtempdB.Create(outfile, heap, NULL);
+        crtempdB.Close();
+
+        DBFile *tempdB;
+        tempdB = new DBFile();
+        tempdB->Open(outfile);
+        Record recR, recL;
+        long int totalreccnt = 0;
+        if (inPipeL->Remove(&recL) && inPipeR->Remove(&recR)) {
+            // for merging 2 records, necessary stuff
+            int nolatts = ((int *) recL.bits)[1] / sizeof (int) - 1;
+            int noratts = ((int *) recR.bits)[1] / sizeof (int) - 1;
+            int noofatts = nolatts + noratts;
+            int *attstokeep = new int[noofatts];
+            int j = 0;
+            for (int i = 0; i < nolatts; i++)
+                attstokeep[j++] = i;
+            for (int k = 0; k < noratts; k++)
+                attstokeep[j++] = k;
+
+            Record joinrecord;
+            ComparisonEngine ce;
+            //////merge stuff initialized////////
+
+            tempdB->Add(recL);
+            while (inPipeL->Remove(&recL)) {
+                tempdB->Add(recL);
+            }
+
+
+            int blocksize = runlen < MIN_RUNLEN ? 600 * MIN_RUNLEN : 600 * runlen;
+            Record * recBuff[blocksize];
+
+            Record *recptr;
+            //initialize the recBuffers
+            for (int i = 0; i < blocksize; i++) {
+                recptr = new Record();
+                recBuff[i] = recptr;
+            }
+
+            Record * lrecbuffer[blocksize];
+            for (int i = 0; i < blocksize; i++) {
+                recptr = new Record();
+                lrecbuffer[i] = recptr;
+            }
+
+            bool pipeempty = false;
+            bool firstflag = true;
+            int reccnt;
+
+            tempdB->MoveFirst();
+
+            while (!pipeempty) {
+                reccnt = 0;
+                if (firstflag) {
+                    recBuff[reccnt]->Copy(&recR);
+                    reccnt++;
+                    firstflag = false;
+                }
+                while (!pipeempty && reccnt < blocksize) {
+                    int val = inPipeR->Remove(recBuff[reccnt]);
+                    if (val == 1) {
+                        reccnt++;
+                    } else if (val == 0)
+                        pipeempty = true;
+                }
+
+                //nested -loop join
+                Record lrec;
+
+
+                int lreccnt = 0;
+
+
+                bool fileempty = false;
+                while (!fileempty) {
+                    lreccnt = 0;
+
+                    while (!fileempty && lreccnt < blocksize) {
+                        Record rec;
+                        if (tempdB->GetNext(rec)) {
+                            lrecbuffer[lreccnt]->Copy(&rec);
+                            lreccnt++;
+                        } else
+                            fileempty = true;
+                    }
+
+                    for (int i = 0; i < reccnt; i++) {
+                        for (int j = 0; j < lreccnt; j++) {
+                            totalreccnt++;
+                            if (ce.Compare(lrecbuffer[j], recBuff[i], literal, selOp) == 1) {
+                                joinrecord.MergeRecords(lrecbuffer[j], recBuff[i], nolatts, noratts, attstokeep, noofatts, nolatts);
+                                outPipe->Insert(&joinrecord);
+                            }
+                            // cout<<"TotalReccnt"<<totalreccnt;
+                        }
+                    }
+                }
+                tempdB->Close();
+                delete tempdB;
+                tempdB = new DBFile();
+                tempdB->Open(outfile);
+                tempdB->MoveFirst();
+
+            }
+
+        }
+        tempdB->Close();
+        remove(outfile);
+        cout << "Total Rec Count:" << totalreccnt;
+    }
+
+    outPipe->ShutDown();
+
+
+
+#ifdef _Join_test
+    cout << "\nRec count merged : " << cnt;
+    cout << "\nRes 0 : " << reszero;
+    cout << "\nRes + : " << respos;
+    cout << "\nRes - : " << resneg;
+    cout << "\nRPIPE CNT:" << rpipcnt;
+    cout << "\nLPIPE CNT:" << lpipcnt;
+    cout << "\nleft pipe not empty:" << lpipnotempty;
+    cout << "\n right pipe not empty:" << rpipnotempty;
+#endif
+}
+
+void Join::deleteandclear(vector<Record*> &vec) {
+    for (int i = 0; i < vec.size(); i++) {
+        delete vec.at(i);
+    }
+    vec.clear();
+}
+
+void Join::WaitUntilDone() {
+    pthread_join(op_thread, NULL);
+}
+
+void Join::Use_n_Pages(int n) {
+    runlen = n;
+    return;
+}
+
+------------------------------------------------------------- */
+
+GroupBy::GroupBy() {
+}
+
+GroupBy::~GroupBy() {
+}
+
+void GroupBy::WaitUntilDone() {
+    //pthread_join(worker, NULL);
+}
+
+void GroupBy::Use_n_Pages(int n) {
+    this->runLen = n;
+}
+
+void GroupBy::Run(Pipe &inPipe, Pipe &outPipe, OrderMaker &groupAtts, Function &computeMe) {
+    this->inputPipe = &inPipe;
+    this->outputPipe = &outPipe;
+    this->function = &computeMe;
+    this->groupAtts = &groupAtts;
+
+    if (pthread_create(&worker, NULL, groupby_workerThread, (void*) this)) {
+        SYS_FATAL("Failed to start the thread");
+    }
+}
+
+void* groupby_workerThread(void *attr) {
+#ifdef ddebug    
+    cout << "GroupBy thread created" << endl;
+#endif
+    GroupBy *gb_ptr = (GroupBy*) attr;
+    gb_ptr->groupby_runOperator();
+    sleep(1);
+#ifdef ddebug    
+    cout << "GroupBy thread exited" << endl;
+#endif
+    pthread_exit(NULL);
+}
+
+void GroupBy::groupby_runOperator() {
+    Record *sumRecord = new Record;
+
+    Record *recLeft = new Record;
+    Record *recRight = new Record;
+
+    Type type;
+
+    Pipe *out = new Pipe(100);
+
+    //sleep(2);
+    BigQ bq(*inputPipe, *out, *groupAtts, runLen);
+
+    Record rec[2];
+    Record *last = NULL, *prev = NULL;
+
+    ComparisonEngine ceng;
+    long int counter = 0;
+    int inserted = 0;
+    int intSum = 0;
+    double doubleSum = 0;
+    int argIntSum;
+    double argDoubleSum;
+
+    if (function->returnsInt)
+        type = Int;
+    else
+        type = Double;
+
+    int attsToKeep[groupAtts->numAtts + 1];
+    attsToKeep[0] = 0;
+
+    for (int i = 1; i <= groupAtts->numAtts; i++) {
+        attsToKeep[i] = groupAtts->whichAtts[i - 1];
+    }
+
+    while (out->Remove(&rec[counter % 2])) {
+
+        prev = last;
+        last = &rec[counter % 2];
+
+        if (prev && last) {
+            if (ceng.Compare(prev, last, groupAtts) != 0) {
+
+                function->Apply(*prev, argIntSum, argDoubleSum);
+
+                if (function->returnsInt)
+                    intSum += argIntSum;
+                else
+                    doubleSum += argDoubleSum;
+
+                recLeft->CreateRecord(type, intSum, doubleSum);
+
+                sumRecord->MergeRecords(recLeft, prev, 1, ((int *) prev->bits)[1] / sizeof (int) - 1, attsToKeep, (groupAtts->numAtts) + 1, 1);
+                outputPipe->Insert(sumRecord);
+                intSum = 0;
+                doubleSum = 0;
+
+                inserted++;
+            } else {
+
+                function->Apply(*prev, argIntSum, argDoubleSum);
+                if (function->returnsInt)
+                    intSum += argIntSum;
+                else
+                    doubleSum += argDoubleSum;
+            }
+        }
+        counter++;
+    }
+
+    function->Apply(*last, argIntSum, argDoubleSum);
+    if (function->returnsInt)
+        intSum += argIntSum;
+    else
+        doubleSum += argDoubleSum;
+
+    recLeft->CreateRecord(type, intSum, doubleSum);
+
+    sumRecord->MergeRecords(recLeft, last, 1, ((int *) prev->bits)[1] / sizeof (int) - 1, attsToKeep, groupAtts->numAtts + 1, 1);
+
+    outputPipe->Insert(sumRecord);
+    inserted++;
+    outputPipe->ShutDown();
+    //delete(out);
+
+}
+
+/* GroupBy class definition ends here*/
+

@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configurationDescriptor version="88">
+  <logicalFolder name="root" displayName="root" projectFiles="true" kind="ROOT">
+    <df root="." name="a4.2development">
+      <in>A1test.h</in>
+      <in>A2.1test.h</in>
+      <in>A2.2test.h</in>
+      <in>BigQ.cc</in>
+      <in>BigQ.h</in>
+      <in>Comparison.cc</in>
+      <in>Comparison.h</in>
+      <in>ComparisonEngine.cc</in>
+      <in>ComparisonEngine.h</in>
+      <in>CompilerInterfaces.h</in>
+      <in>DBEngine.cc</in>
+      <in>DBEngine.h</in>
+      <in>DBFile.cc</in>
+      <in>DBFile.h</in>
+      <in>Debug.h</in>
+      <in>Defs.h</in>
+      <in>Errors.h</in>
+      <in>File.cc</in>
+      <in>File.h</in>
+      <in>Function.cc</in>
+      <in>Function.h</in>
+      <in>HeapDBFile.cc</in>
+      <in>ParseTree.h</in>
+      <in>Pipe.cc</in>
+      <in>Pipe.h</in>
+      <in>Record.cc</in>
+      <in>Record.h</in>
+      <in>RelOp.cc</in>
+      <in>RelOp.h</in>
+      <in>Schema.cc</in>
+      <in>Schema.h</in>
+      <in>SortedDBFile.cc</in>
+      <in>Statistics.cc</in>
+      <in>Statistics.h</in>
+      <in>TwoWayList.cc</in>
+      <in>TwoWayList.h</in>
+      <in>a3test.h</in>
+      <in>lex.yy.c</in>
+      <in>lex.yyfunc.c</in>
+      <in>main.cc</in>
+      <in>y.tab.c</in>
+      <in>y.tab.h</in>
+      <in>yyfunc.tab.c</in>
+      <in>yyfunc.tab.h</in>
+    </df>
+    <logicalFolder name="ExternalFiles"
+                   displayName="Important Files"
+                   projectFiles="false"
+                   kind="IMPORTANT_FILES_FOLDER">
+      <itemPath>Makefile</itemPath>
+    </logicalFolder>
+  </logicalFolder>
+  <sourceFolderFilter>^(nbproject)$</sourceFolderFilter>
+  <sourceRootList>
+    <Elem>.</Elem>
+  </sourceRootList>
+  <projectmakefile>Makefile</projectmakefile>
+  <confs>
+    <conf name="Default" type="0">
+      <toolsSet>
+        <remote-sources-mode>LOCAL_SOURCES</remote-sources-mode>
+        <compilerSet>default</compilerSet>
+        <dependencyChecking>false</dependencyChecking>
+        <rebuildPropChanged>false</rebuildPropChanged>
+      </toolsSet>
+      <codeAssistance>
+      </codeAssistance>
+      <makefileType>
+        <makeTool>
+          <buildCommandWorkingDir>.</buildCommandWorkingDir>
+          <buildCommand>${MAKE} -f Makefile</buildCommand>
+          <cleanCommand>${MAKE} -f Makefile clean</cleanCommand>
+          <executablePath></executablePath>
+        </makeTool>
+      </makefileType>
+      <item path="A1test.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="A2.1test.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="A2.2test.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="BigQ.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="BigQ.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Comparison.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="Comparison.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="ComparisonEngine.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="ComparisonEngine.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="CompilerInterfaces.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="DBEngine.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="DBEngine.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="DBFile.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="DBFile.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Debug.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Defs.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Errors.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="File.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="File.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Function.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="Function.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="HeapDBFile.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="ParseTree.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Pipe.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="Pipe.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Record.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="Record.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="RelOp.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="RelOp.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Schema.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="Schema.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="SortedDBFile.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="Statistics.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="Statistics.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="TwoWayList.cc" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="TwoWayList.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="a3test.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="lex.yy.c" ex="false" tool="0" flavor2="0">
+      </item>
+      <item path="lex.yyfunc.c" ex="false" tool="0" flavor2="0">
+      </item>
+      <item path="main.cc" ex="false" tool="1" flavor2="0">
+        <ccTool>
+          <incDir>
+            <pElem>.</pElem>
+          </incDir>
+          <preprocessorList>
+            <Elem>ddebug</Elem>
+          </preprocessorList>
+        </ccTool>
+      </item>
+      <item path="y.tab.c" ex="false" tool="1" flavor2="0">
+      </item>
+      <item path="y.tab.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="yyfunc.tab.c" ex="false" tool="1" flavor2="0">
+      </item>
+      <item path="yyfunc.tab.h" ex="false" tool="3" flavor2="0">
+      </item>
+    </conf>
+  </confs>
+</configurationDescriptor>

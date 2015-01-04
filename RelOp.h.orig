@@ -1,0 +1,214 @@
+#ifndef REL_OP_H
+#define REL_OP_H
+
+#include "Pipe.h"
+#include "BigQ.h"
+#include "Defs.h"
+#include "DBFile.h"
+#include "Record.h"
+#include "Function.h"
+#include "Debug.h"
+#include "ComparisonEngine.h"
+
+#include <unistd.h>
+#include <sys/types.h>
+#include <vector>
+
+class RelationalOp {
+public:
+    // blocks the caller until the particular relational operator 
+    // has run to completion
+    virtual void WaitUntilDone() = 0;
+
+    // tell us how much internal memory the operation can use
+    virtual void Use_n_Pages(int n) = 0;
+};
+
+void * sf_workerThread(void*);
+
+class SelectFile : public RelationalOp {
+private:
+    pthread_t worker;
+    DBFile *dbfile;
+    Pipe *outputPipe;
+    CNF *selOp;
+    Record *literal, record;
+    int runLen;
+    ComparisonEngine ce;
+
+public:
+    void * workerThread(void * attr);
+    void Run(DBFile &inFile, Pipe &outPipe, CNF &selOp, Record &literal);
+    void WaitUntilDone();
+    void Use_n_Pages(int n);
+    void sf_runOperator();
+};
+
+void * sp_workerThread(void*);
+
+class SelectPipe : public RelationalOp {
+private:
+    pthread_t worker;
+    Pipe *outputPipe, *inputPipe;
+    CNF *selOp;
+    Record *literal, record;
+    int runLen;
+    ComparisonEngine ce;
+public:
+    void Run(Pipe &inPipe, Pipe &outPipe, CNF &selOp, Record &literal);
+    void WaitUntilDone();
+    void Use_n_Pages(int n);
+    void sp_runOperator();
+};
+
+void* p_workerThread(void*);
+
+class Project : public RelationalOp {
+private:
+    pthread_t worker;
+    Pipe *outputPipe, *inputPipe;
+    int *keepMe;
+    int numAttsInput;
+    int numAttsOutput;
+    Record record;
+    int runLen;
+    ComparisonEngine ce;
+public:
+    void Run(Pipe &inPipe, Pipe &outPipe, int *keepMe, int numAttsInput, int numAttsOutput);
+    void WaitUntilDone();
+    void Use_n_Pages(int n);
+    void p_runOperator();
+};
+
+
+void* Join_workerThread(void* attr);
+
+class Join : public RelationalOp {
+private:
+    int runLen;
+    pthread_t worker;
+    ComparisonEngine ce;
+    Pipe *inPipeL;
+    Pipe *inPipeR;
+    Pipe *outPipe;
+    CNF *selOp;
+    Record *literal;
+
+public:
+    Join();
+    ~Join();
+    void Run(Pipe &inPipeL, Pipe &inPipeR, Pipe &outPipe, CNF &selOp, Record &literal);
+    void WaitUntilDone();
+    void Use_n_Pages(int n);
+    void Join_runOperator();
+}; 
+
+/*
+class Join : public RelationalOp { 
+	private:
+	 pthread_t op_thread;
+         pthread_t lbp_thread;
+         pthread_t rbp_thread;
+         Pipe *inPipeL;
+         Pipe *inPipeR;
+         Pipe *outPipe;
+         Pipe *lsrtdoutpipe;
+         Pipe *rsrtdoutpipe;
+         bool BypassSrtLeft;
+         bool BypassSrtright;
+         CNF *selOp;
+         Record *literal;
+         int runlen;
+        public:
+            int MIN_RUNLEN;
+	void Run (Pipe &inPipeL, Pipe &inPipeR, Pipe &outPipe, CNF &selOp, Record &literal,bool leftflag,bool rightflag);
+        static void* doOpHelper(void*);
+        void* doOperation();
+        void deleteandclear(vector<Record*> &vec);
+	void WaitUntilDone ();
+	void Use_n_Pages (int n);
+        static void* LeftBypasserhelper(void *context);
+        void* LeftBypasser();
+        static void* RightBypasserhelper(void *context);
+        void* RightBypasser();
+};*/
+
+void * dr_workerThread(void *);
+
+class DuplicateRemoval : public RelationalOp {
+private:
+    //Read inputs from this pipe
+    Pipe *inputPipe;
+    //Write ouput to this pipe
+    Pipe *outputPipe;
+    //Use this pipe to read results from BigQ
+    Pipe bigQoutPipe;
+    Schema *schema;
+    pthread_t worker;
+    int runLen;
+    //OrderMaker sortOrder;
+    ComparisonEngine ce;
+
+public:
+    DuplicateRemoval();
+    ~DuplicateRemoval();
+    void Run(Pipe &inPipe, Pipe &outPipe, Schema &mySchema);
+    void WaitUntilDone();
+    void Use_n_Pages(int n);
+    void dr_runOperator();
+};
+
+void * sum_workerThread(void*);
+
+class Sum : public RelationalOp {
+    Pipe *inputPipe;
+    Pipe *outputPipe;
+    Function *function;
+    int runLen;
+    pthread_t worker;
+public:
+    Sum();
+    ~Sum();
+    void Run(Pipe &inPipe, Pipe &outPipe, Function &computeMe);
+    void WaitUntilDone();
+    void Use_n_Pages(int n);
+    void sum_runOperator();
+};
+
+void * groupby_workerThread(void*);
+
+class GroupBy : public RelationalOp {
+private:
+    Pipe *inputPipe;
+    Pipe *outputPipe;
+    Function *function;
+    OrderMaker *groupAtts;
+    int runLen;
+    pthread_t worker;
+public:
+    GroupBy();
+    ~GroupBy();
+    void Run(Pipe &inPipe, Pipe &outPipe, OrderMaker &groupAtts, Function &computeMe);
+    void WaitUntilDone();
+    void Use_n_Pages(int n);
+    void groupby_runOperator();
+};
+
+void* wo_workerThread(void *);
+
+class WriteOut : public RelationalOp {
+private:
+    Pipe *inputPipe;
+    FILE *file;
+    Schema *schema;
+    int runLen;
+    pthread_t worker;
+public:
+    WriteOut();
+    ~WriteOut();
+    void Run(Pipe &inPipe, FILE *outFile, Schema &mySchema);
+    void WaitUntilDone();
+    void Use_n_Pages(int n);
+    void wo_runOperator();
+};
+#endif

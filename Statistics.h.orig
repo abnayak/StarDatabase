@@ -1,0 +1,67 @@
+#ifndef STATISTICS_
+#define STATISTICS_
+#include "ParseTree.h"
+#include <map>
+#include <list>
+#include <iostream>
+#include <fstream>
+#include <stdio.h>
+#include <cstring>
+#include <stdlib.h>
+#include <algorithm>
+#include <vector>
+#include <set>
+#include <math.h>
+
+
+using namespace std;
+
+class Statistics {
+private:
+
+    const char* pointerFile;
+    const char* joinFile;
+    
+    map<string, pair <int, string > > attribute_hash;
+    map<string, pair<int, vector<string> > > relation_hash;
+    map<string, pair<int, vector<string> > >::iterator it;
+
+    vector<string> joinMe;
+    map<string, int> ptr;
+
+
+    map<string, int> ::iterator internal_it;
+    map<string, pair <int, string > > ::iterator it_att_hash;
+    map<string, int>::iterator it_pointer;
+
+    int totalJoins;
+    void UpdateAtt(char *attName, int numDistincts);
+    int GetDistinct(char* name);
+    int GetTuples(string name);
+    void PrintAttHash();
+    void PrintPointer();
+    void PrintJoined();
+
+public:
+    Statistics();
+    Statistics(Statistics &copyMe); 
+    ~Statistics();
+
+    void AddRel(char *relName, int numTuples);
+    void AddAtt(char *relName, char *attName, int numDistincts);
+    void CopyRel(char *oldName, char *newName);
+
+    void Read(char *fromWhere);
+    void Write(char *fromWhere);
+
+    void Apply(struct AndList *parseTree, char *relNames[], int numToJoin);
+    double Estimate(struct AndList *parseTree, char **relNames, int numToJoin);
+
+    void ReadPointerFromFile(const char* fromWhere);
+    void ReadJoinedFromFile(const char* fromWhere);
+    void WritePointerToFile(const char* fromWhere);
+    void WriteJoinedToFile(const char* fromWhere);
+
+};
+
+#endif
